@@ -127,11 +127,11 @@ jobs:
       - name: Push image to registry
         env:
           IMAGE_TAG: fedora-httpd:latest
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Pushing image..."
           ./machine push fedora-httpd:latest
-          echo "  (auth: export REGISTRY_AUTH_FILE=\$HOME/.docker/config.json
-            or use \`skopeo login\`)"
 
       - name: Upload machine binary
 
