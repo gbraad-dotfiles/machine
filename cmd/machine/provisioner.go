@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	provider "github.com/crc-org/macadam/pkg/machinedriver/provider"
 	imagepullers "github.com/crc-org/macadam/pkg/imagepullers"
@@ -94,6 +95,15 @@ func (m *MacadamProvisioner) StopVM(name string) error {
 	}
 	if err := shim.Stop(mc, p, dirs, false); err != nil {
 		return fmt.Errorf("failed to stop VM: %w", err)
+	}
+	// Reap the QEMU zombie left by shim.Stop so the goroutine's
+	// isProcessAlive loop can exit.
+	for {
+		var ws syscall.WaitStatus
+		pid, err := syscall.Wait4(-1, &ws, syscall.WNOHANG, nil)
+		if pid <= 0 || err != nil {
+			break
+		}
 	}
 	return nil
 }

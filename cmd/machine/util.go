@@ -7,34 +7,13 @@ import (
 	"math/rand"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
 )
-
-func init() {
-	// Reap zombie child processes (QEMU/gvproxy) as soon as they exit,
-	// so that macadam's PID-poll doesn't wait forever on a dead PID.
-	go func() {
-		c := make(chan os.Signal, 10)
-		signal.Notify(c, syscall.SIGCHLD)
-		for range c {
-			// Keep reaping until no more children have exited.
-			for {
-				var ws syscall.WaitStatus
-				pid, err := syscall.Wait4(-1, &ws, syscall.WNOHANG, nil)
-				if pid <= 0 || err != nil {
-					break
-				}
-			}
-		}
-	}()
-}
 
 // findBinary searches for an executable binary.
 // order: envVar if set, exec.LookPath, ./bin/<name> relative to executable, $HOME/.cache/machine/bin/<name>.

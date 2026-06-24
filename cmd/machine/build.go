@@ -35,8 +35,22 @@ var buildCommand = &cobra.Command{
 			os.Exit(1)
 		}
 		ensureDirs()
+	// Continuous zombie reaper: prevents QEMU/gvproxy zombies from
+	// hanging the goroutine's isProcessAlive loop.
+	go func() {
+		for {
+			for {
+				var ws syscall.WaitStatus
+				pid, err := syscall.Wait4(-1, &ws, syscall.WNOHANG, nil)
+				if pid <= 0 || err != nil {
+					break
+				}
+			}
+			time.Sleep(2 * time.Second)
+		}
+	}()
 
-		cleanup := setupEnv(cmd)
+	cleanup := setupEnv(cmd)
 		defer cleanup()
 
 		basePath, err := resolveBaseImage(baseSpec)
