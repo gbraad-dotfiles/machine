@@ -69,6 +69,7 @@ func main() {
 	rootCmd.AddCommand(stopCommand)
 	rootCmd.AddCommand(rmCommand)
 	rootCmd.AddCommand(gvproxyCommand)
+	rootCmd.AddCommand(pushCommand)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

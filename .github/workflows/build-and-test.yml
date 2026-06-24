@@ -128,20 +128,10 @@ jobs:
         env:
           IMAGE_TAG: fedora-httpd:latest
         run: |
-          TAG=$(date +'%y%m%d')
-          mkdir -p /tmp/disk-push
-          cp ~/.local/share/machine/images/fedora-httpd.qcow2 /tmp/disk-push/disk.qcow2
-
-          cat > /tmp/disk-push/Containerfile <<EOF
-          FROM scratch
-          ADD ./disk.qcow2 /disk.qcow2
-          EOF
-
-          podman build -t ghcr.io/gbraad-dotfiles/fedora-httpd-disk:latest /tmp/disk-push
-          podman tag ghcr.io/gbraad-dotfiles/fedora-httpd-disk:latest ghcr.io/gbraad-dotfiles/fedora-httpd-disk:${TAG}
-          echo "Image tagged. Push would require:"
-          echo "  podman login ghcr.io -u \${{ github.actor }} -p \${{ secrets.GITHUB_TOKEN }}"
-          echo "  podman push ghcr.io/gbraad-dotfiles/fedora-httpd-disk:latest"
+          echo "Pushing image..."
+          ./machine push fedora-httpd:latest
+          echo "  (auth: export REGISTRY_AUTH_FILE=\$HOME/.docker/config.json
+            or use \`skopeo login\`)"
 
       - name: Upload machine binary
 
