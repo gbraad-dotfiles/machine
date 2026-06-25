@@ -40,6 +40,8 @@ ducttape shell my-httpd curl -s http://localhost/
 ducttape push my-httpd ghcr.io/myuser/my-httpd:latest
 ```
 
+See [this repo](https://github.com/ducttape-infra/examples) for a few examples. This is also extensively used in my [dotfiles](https://github.com/gbraad-dotfiles/)
+
 
 ## Machinefile Syntax
 
@@ -54,7 +56,7 @@ RUN dnf install -y httpd && dnf clean all && systemctl enable httpd
 The `-d` flag overrides `FROM` when specified.
 
 > [!NOTE]
-> Other commands are ignored which therefore allows you to use Containerfiles shared between containers and viertual machines
+> Other commands are ignored which therefore allows you to use Containerfiles shared between containers and virtual machines
 
 
 ## Requirements
