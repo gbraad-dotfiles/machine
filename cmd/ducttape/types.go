@@ -3,7 +3,7 @@ package main
 // Provisioner abstracts the VM provisioner (macadam, lima, etc.)
 type Provisioner interface {
 	// CreateVM creates a VM with the given parameters.
-	CreateVM(name string, diskImage string, cpus string, memory string, diskSize string, username string) error
+	CreateVM(name string, diskImage string, cpus string, memory string, diskSize string, username string, rootPass string, cloudInitPath string) error
 	// StartVM starts the VM.
 	StartVM(name string) error
 	// StopVM stops the VM.

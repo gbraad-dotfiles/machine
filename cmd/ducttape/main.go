@@ -54,10 +54,12 @@ func main() {
 	buildCommand.Flags().StringP("base", "d", "", "Base image (path or tag)")
 	buildCommand.Flags().StringP("provisioner", "p", "macadam", "Provisioner to use (macadam|lima)")
 	buildCommand.Flags().StringP("user", "u", "", "Cloud-init username (default: $USER)")
+	buildCommand.Flags().String("cloudinit", "", "Path to custom cloud-init user-data file")
 	buildCommand.Flags().StringP("root-pass", "", defaultRootPass, "Root password for SSH (default: "+defaultRootPass+")")
 	buildCommand.Flags().StringP("user-pass", "", defaultUserPass, "User password for SSH (default: "+defaultUserPass+")")
 
 	runCommand.Flags().StringP("name", "n", "", "Name for the VM (optional)")
+	runCommand.Flags().StringP("root-pass", "", defaultRootPass, "Root password for SSH (default: "+defaultRootPass+")")
 	runCommand.Flags().StringP("user", "u", "", "Cloud-init username (default: $USER)")
 	runCommand.Flags().StringP("cpus", "c", "", "Number of CPUs")
 	runCommand.Flags().StringP("memory", "m", "", "Memory in MB")

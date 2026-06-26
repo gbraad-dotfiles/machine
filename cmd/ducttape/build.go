@@ -30,6 +30,7 @@ var buildCommand = &cobra.Command{
 		baseSpec, _ := cmd.Flags().GetString("base")
 		provisionerName, _ := cmd.Flags().GetString("provisioner")
 		rootPass := cmd.Flags().Lookup("root-pass").Value.String()
+	cloudInitPath, _ := cmd.Flags().GetString("cloudinit")
 		userPass := cmd.Flags().Lookup("user-pass").Value.String()
 	vmUser := imageUser
 		if u, _ := cmd.Flags().GetString("user"); u != "" {
@@ -40,8 +41,14 @@ var buildCommand = &cobra.Command{
 			fmt.Fprintln(cmd.OutOrStderr(), "Error: --tag is required")
 			os.Exit(1)
 		}
-		// If no --base given, try reading FROM from the Machinefile
-		if baseSpec == "" && mfPath != "" {
+		if mfPath != "" {
+		if _, err := os.Stat(mfPath); err != nil {
+			fmt.Fprintf(cmd.OutOrStderr(), "Error: Machinefile %q not found\n", mfPath)
+			os.Exit(1)
+		}
+	}
+	// If no --base given, try reading FROM from the Machinefile
+	if baseSpec == "" && mfPath != "" {
 			baseSpec = readFromLine(mfPath)
 		}
 		if baseSpec == "" {
@@ -92,7 +99,7 @@ var buildCommand = &cobra.Command{
 			os.Exit(1)
 		}
 
-		if err := p.CreateVM(tmpName, basePath, "2", "2048", "10", vmUser); err != nil {
+		if err := p.CreateVM(tmpName, basePath, "2", "2048", "10", vmUser, rootPass, cloudInitPath); err != nil {
 			fmt.Fprintf(cmd.OutOrStderr(), "%s init failed: %v\n", provisionerName, err)
 			os.Exit(1)
 		}

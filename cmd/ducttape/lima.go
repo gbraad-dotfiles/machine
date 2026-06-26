@@ -12,7 +12,7 @@ import (
 // LimaProvisioner implements Provisioner using the limactl binary.
 type LimaProvisioner struct{}
 
-func (l *LimaProvisioner) CreateVM(name string, diskImage string, cpus string, memory string, diskSize string, username string) error {
+func (l *LimaProvisioner) CreateVM(name string, diskImage string, cpus string, memory string, diskSize string, username string, rootPass string, cloudInitPath string) error {
 	args := []string{
 		"create",
 		"--name", name,

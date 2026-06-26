@@ -83,6 +83,8 @@ Use 'ducttape ps' to list running VMs and 'machine stop' to stop them.`,
 		// If we're the re-exec'd child, run the VM (blocking).
 		if os.Getenv(envReExec) != "" {
 			ensureDirs()
+			// In re-exec child, flags are available via cmd
+			rootPass, _ := cmd.Flags().GetString("root-pass")
 			cleanup := setupEnv(cmd)
 			defer cleanup()
 			var p Provisioner
@@ -94,7 +96,7 @@ Use 'ducttape ps' to list running VMs and 'machine stop' to stop them.`,
 			default:
 				os.Exit(1)
 			}
-			if err := p.CreateVM(fullName, diskPath, cpus, memory, diskSize, vmUser); err != nil {
+			if err := p.CreateVM(fullName, diskPath, cpus, memory, diskSize, vmUser, rootPass, ""); err != nil {
 				os.Exit(1)
 			}
 			p.StartVM(fullName)
