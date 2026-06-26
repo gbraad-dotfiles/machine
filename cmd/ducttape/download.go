@@ -27,6 +27,12 @@ func downloadBaseImage(spec string, cacheName string) (string, error) {
 	dest := filepath.Join(baseImagesDir, cacheName+".qcow2")
 	_ = os.MkdirAll(baseImagesDir, 0o755)
 
+	// Return cached copy if available
+	if fi, err := os.Stat(dest); err == nil && !fi.IsDir() {
+		fmt.Printf("  Using cached %s\n", cacheName)
+		return dest, nil
+	}
+
 	if strings.HasPrefix(spec, "file://") {
 		src := strings.TrimPrefix(spec, "file://")
 		if err := copyFile(src, dest); err != nil {
@@ -135,13 +141,20 @@ func pullFromRegistry(ref string, dest string) (string, error) {
 		tmpDir, _ := os.MkdirTemp("", "ducttape-pull-*")
 		defer os.RemoveAll(tmpDir)
 		dlURL := fmt.Sprintf("docker://%s/%s:%s", registry, repo, tag)
+		fmt.Printf("  Downloading %s ...\n", dlURL)
 		dirDest := fmt.Sprintf("dir:%s", tmpDir)
-		cmd := exec.Command("skopeo", "copy", dlURL, dirDest)
+		cmd := exec.Command(skopeoPath, "copy", dlURL, dirDest)
+		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
 			return "", fmt.Errorf("skopeo pull: %w", err)
 		}
-		return extractQCOWFromDir(tmpDir, manifest.Layers[0].Digest, dest)
+		fmt.Print("  Extracting QCOW2 ... ")
+		res, err := extractQCOWFromDir(tmpDir, manifest.Layers[0].Digest, dest)
+		if err == nil {
+			fmt.Println("done.")
+		}
+		return res, err
 	}
 
 	tmpDir, _ := os.MkdirTemp("", "ducttape-pull-*")
@@ -157,7 +170,8 @@ func pullFromRegistry(ref string, dest string) (string, error) {
 		}
 		layerFile := filepath.Join(tmpDir, fmt.Sprintf("layer-%d", i))
 		f, _ := os.Create(layerFile)
-		io.Copy(f, blobResp.Body)
+		pw := &progressWriter{total: blobResp.ContentLength}
+		io.Copy(io.MultiWriter(f, pw), blobResp.Body)
 		f.Close()
 		blobResp.Body.Close()
 	}
