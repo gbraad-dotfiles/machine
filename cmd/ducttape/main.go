@@ -73,6 +73,7 @@ func main() {
 	runCommand.Flags().StringP("memory", "m", "", "Memory in MB")
 	runCommand.Flags().StringP("disk-size", "s", "", "Disk size in GB")
 	runCommand.Flags().StringP("provisioner", "p", defaultProv, "Provisioner to use (lima|macadam)")
+	runCommand.Flags().StringSliceP("publish", "", nil, "Publish a port (host:guest, e.g. 8080:80)")
 
 	rootCmd.AddCommand(buildCommand)
 	rootCmd.AddCommand(runCommand)
@@ -84,6 +85,8 @@ func main() {
 	rootCmd.AddCommand(gvproxyCommand)
 	rootCmd.AddCommand(pushCommand)
 	rootCmd.AddCommand(pullCommand)
+	rootCmd.AddCommand(ipCommand)
+	rootCmd.AddCommand(portsCommand)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -25,7 +26,6 @@ func init() {
 		cmd.Stdin = nil
 		cmd.Stdout = nil
 		cmd.Stderr = nil
-		// Log child stderr to temp for debugging
 		if lf, _ := os.Create(filepath.Join(os.TempDir(), "ducttape-run.log")); lf != nil {
 			cmd.Stderr = lf
 			lf.Close()
@@ -39,7 +39,13 @@ var runCommand = &cobra.Command{
 	Use:   "run <image>",
 	Short: "Run a VM from a built image",
 	Long: `Start a VM in the background from a previously built image.
-	Use 'ducttape ps' to list running VMs and 'machine stop' to stop them.`,
+
+  ducttape run myimage                  # run with default settings
+  ducttape run myimage -n web          # name the VM
+  ducttape run myimage --publish 8080:80  # forward host:8080 to guest:80
+  ducttape run myimage --publish 443:443/tcp  # with protocol
+
+Use 'ducttape ps' to list running VMs and 'ducttape stop' to stop them.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) < 1 {
 			fmt.Fprintln(cmd.OutOrStderr(), "Error: image argument required")
@@ -51,15 +57,10 @@ var runCommand = &cobra.Command{
 		memory, _ := cmd.Flags().GetString("memory")
 		diskSize, _ := cmd.Flags().GetString("disk-size")
 		provisionerName, _ := cmd.Flags().GetString("provisioner")
+		publish, _ := cmd.Flags().GetStringSlice("publish")
 		vmUser := imageUser
 		if u, _ := cmd.Flags().GetString("user"); u != "" {
 			vmUser = u
-		}
-
-		// Validate provisioner binary before proceeding
-		if err := validateProvisioner(provisionerName); err != nil {
-			fmt.Fprintf(cmd.OutOrStderr(), "Error: %v\n", err)
-			os.Exit(1)
 		}
 
 		if vmName == "" {
@@ -104,6 +105,15 @@ var runCommand = &cobra.Command{
 			if err := p.CreateVM(fullName, diskPath, cpus, memory, diskSize, vmUser, rootPass, ""); err != nil {
 				os.Exit(1)
 			}
+
+			// Insert port forwards into Lima YAML before starting
+			if provisionerName == "lima" && len(publish) > 0 {
+				if err := addLimaPortForwards(fullName, publish); err != nil {
+					fmt.Fprintf(cmd.OutOrStderr(), "port forward setup failed: %v\n", err)
+					os.Exit(1)
+				}
+			}
+
 			p.StartVM(fullName)
 			return
 		}
@@ -125,4 +135,35 @@ var runCommand = &cobra.Command{
 		fmt.Printf("VM %s started (pid %d)\n", fullName, pid)
 		fmt.Printf("  Use 'ducttape stop %s' to stop it.\n", vmName)
 	},
+}
+
+// addLimaPortForwards inserts a portForwards block into the Lima instance YAML.
+// publish entries are in "hostPort:guestPort" or "hostPort:guestPort/proto" format.
+func addLimaPortForwards(name string, publish []string) error {
+	limaYAML := filepath.Join(os.Getenv("HOME"), ".lima", name, "lima.yaml")
+	data, err := os.ReadFile(limaYAML)
+	if err != nil {
+		return fmt.Errorf("read lima yaml: %w", err)
+	}
+
+	var pfLines []string
+	for _, entry := range publish {
+		proto := "tcp"
+		portSpec := entry
+		if slash := strings.Index(entry, "/"); slash >= 0 {
+			proto = entry[slash+1:]
+			portSpec = entry[:slash]
+		}
+		parts := strings.SplitN(portSpec, ":", 2)
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid port spec %q (use hostPort:guestPort)", entry)
+		}
+		pfLines = append(pfLines, fmt.Sprintf(`  - guestPort: %s
+    hostPort: %s
+    proto: %s`, parts[1], parts[0], proto))
+	}
+
+	block := "\nportForwards:\n" + strings.Join(pfLines, "\n") + "\n"
+	data = append(data, []byte(block)...)
+	return os.WriteFile(limaYAML, data, 0o644)
 }
