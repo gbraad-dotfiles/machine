@@ -1,6 +1,8 @@
 Ducttape
 ========
 
+![](https://avatars.githubusercontent.com/u/296723703?s=140&v=4)
+
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/ducttape-infra/ducttape/)
 
 Ducttape is a command-line tool designed to bridge the gap between container-like workflows and virtual machine (VM) management. It allows developers to build, run, and share VM images using a syntax and lifecycle similar to Docker or Podman.
