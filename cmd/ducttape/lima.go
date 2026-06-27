@@ -6,54 +6,29 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 )
 
 // LimaProvisioner implements Provisioner using the limactl binary.
 type LimaProvisioner struct{}
 
 func (l *LimaProvisioner) CreateVM(name string, diskImage string, cpus string, memory string, diskSize string, username string, rootPass string, cloudInitPath string) error {
-	// Generate SSH key pair (same as macadam path)
-	sshKeyPath := filepath.Join(os.Getenv("HOME"), ".local", "share", "lima", name)
-	sshKeyPub := sshKeyPath + ".pub"
-	os.MkdirAll(filepath.Dir(sshKeyPath), 0o755)
-	keyCmd := exec.Command("ssh-keygen", "-t", "ed25519", "-f", sshKeyPath, "-N", "", "-q")
-	if err := keyCmd.Run(); err != nil {
-		// Key may already exist
-	}
-	pubKeyData, _ := os.ReadFile(sshKeyPub)
-	pubKey := strings.TrimSpace(string(pubKeyData))
-
-	// Build lima YAML config
 	provision := `provision:
 - mode: system
   script: |
     #!/bin/sh
     set -e
-    echo "` + "`date`" + `: ducttape provision start"
+    echo "$(date): ducttape provision start"
 `
 
-	// If custom cloud-init provided, convert to provision script
+	// If custom cloud-init provided, copy its content as a provision script
 	if cloudInitPath != "" {
 		data, err := os.ReadFile(cloudInitPath)
 		if err == nil {
-			// Extract runcmd sections and convert to provision commands
 			provision += fmt.Sprintf("    cat > /tmp/user-data << 'CIEOF'\n%s\nCIEOF\n", string(data))
 		}
 	}
 
-	// Always set up the user with SSH key
-	provision += fmt.Sprintf(`    # Create user and add SSH key
-    id -u %s 2>/dev/null || useradd -m -s /bin/sh %s
-    mkdir -p ~%s/.ssh
-    echo '%s' >> ~%s/.ssh/authorized_keys
-    chown -R %s:%s ~%s/.ssh
-    chmod 700 ~%s/.ssh
-    chmod 600 ~%s/.ssh/authorized_keys
-    echo "%s ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/%s
-`, username, username, username, pubKey, username, username, username, username, username, username, username)
-
-	// Root password setup
+	// Set root password for SSH
 	if rootPass != "" {
 		provision += fmt.Sprintf(`    echo 'root:%s' | chpasswd
 `, rootPass)
@@ -62,18 +37,20 @@ func (l *LimaProvisioner) CreateVM(name string, diskImage string, cpus string, m
 	yaml := fmt.Sprintf(`# ducttape-generated lima config
 images:
 - location: "%s"
-  arch: "x86_64"
+arch: "%s"
 cpus: %s
 memory: "%sMiB"
 disk: "%sGiB"
 mounts: []
+containerd:
+  system: false
+  user: false
 ssh:
   localPort: 0
-  loadDotSSHPubKeys: false
+  loadDotSSHPubKeys: true
   forwardAgent: false
-%s`, diskImage, cpus, memory, diskSize, provision)
+%s`, diskImage, archForQEMU(), cpus, memory, diskSize, provision)
 
-	// Write YAML to temp file
 	yamlPath := filepath.Join(os.TempDir(), "ducttape-lima-"+name+".yaml")
 	if err := os.WriteFile(yamlPath, []byte(yaml), 0o644); err != nil {
 		return fmt.Errorf("write lima config: %w", err)
@@ -101,35 +78,62 @@ func (l *LimaProvisioner) RemoveVM(name string) error {
 }
 
 func (l *LimaProvisioner) SSHInfo(name string) (*VMInfo, error) {
+	user := os.Getenv("USER")
+	identity := filepath.Join(os.Getenv("HOME"), ".lima", name, "ssh")
+	port := 0
+
+	// limactl list --json can output a single object or an array.
 	out, err := exec.Command("limactl", "list", "--json").Output()
-	if err != nil {
-		return nil, fmt.Errorf("failed to list lima instances: %w", err)
+	if err == nil {
+		port, identity = parseLimaListJSON(out, name, identity)
 	}
-	var instances []struct {
-		Name string `json:"name"`
-		SSH  struct {
-			Port         int    `json:"port"`
-			Host         string `json:"host"`
-			User         string `json:"user"`
-			IdentityPath string `json:"identityPath"`
-		} `json:"ssh"`
+
+	if port == 0 {
+		return nil, fmt.Errorf("could not determine SSH port for lima instance %s (is it running?)", name)
 	}
-	if err := json.Unmarshal(out, &instances); err != nil {
-		return nil, fmt.Errorf("failed to parse lima list json: %w", err)
+
+	return &VMInfo{
+		Name:       name,
+		SSHPort:    port,
+		SSHUser:    user,
+		SSHKeyPath: identity,
+	}, nil
+}
+
+// parseLimaListJSON parses "limactl list --json" output which can be either
+// a single object {} or an array [{}]. Returns (port, identityFile).
+func parseLimaListJSON(data []byte, name string, defaultIdentity string) (int, string) {
+	type instance struct {
+		Name         string `json:"name"`
+		SSHLocalPort int    `json:"sshLocalPort"`
+		IdentityFile string `json:"IdentityFile"`
 	}
-	for _, inst := range instances {
-		if inst.Name == name {
-			identity := inst.SSH.IdentityPath
-			if strings.HasPrefix(identity, "~/") {
-				identity = filepath.Join(os.Getenv("HOME"), identity[2:])
+
+	// Single object
+	var single instance
+	if err := json.Unmarshal(data, &single); err == nil && single.Name == name {
+		if single.IdentityFile != "" {
+			return single.SSHLocalPort, single.IdentityFile
+		}
+		return single.SSHLocalPort, defaultIdentity
+	}
+
+	// Array
+	var arr []instance
+	if err := json.Unmarshal(data, &arr); err == nil {
+		for _, inst := range arr {
+			if inst.Name == name {
+				if inst.IdentityFile != "" {
+					return inst.SSHLocalPort, inst.IdentityFile
+				}
+				return inst.SSHLocalPort, defaultIdentity
 			}
-			return &VMInfo{
-				Name:       name,
-				SSHPort:    inst.SSH.Port,
-				SSHUser:    inst.SSH.User,
-				SSHKeyPath: identity,
-			}, nil
 		}
 	}
-	return nil, fmt.Errorf("lima instance %s not found", name)
+
+	return 0, defaultIdentity
+}
+
+func archForQEMU() string {
+	return "x86_64"
 }

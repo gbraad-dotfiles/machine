@@ -9,7 +9,7 @@ on:
       - '**'
 
 env:
-  DUCTTAPE_PROVISIONER: "macadam"
+  DUCTTAPE_PROVISIONER: "lima"
 
 jobs:
   build-and-test:
@@ -56,6 +56,9 @@ jobs:
       - name: Install containers tools (optional)
         continue-on-error: true
         uses: gbraad-actions/setup-container-tools@v1
+
+      - uses: lima-vm/lima-actions/setup@v1
+        id: lima-actions-setup
 
       - name: Update go.mod replace directives for CI paths
         run: |

@@ -39,7 +39,7 @@ var runCommand = &cobra.Command{
 	Use:   "run <image>",
 	Short: "Run a VM from a built image",
 	Long: `Start a VM in the background from a previously built image.
-Use 'ducttape ps' to list running VMs and 'machine stop' to stop them.`,
+	Use 'ducttape ps' to list running VMs and 'machine stop' to stop them.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) < 1 {
 			fmt.Fprintln(cmd.OutOrStderr(), "Error: image argument required")
@@ -54,6 +54,12 @@ Use 'ducttape ps' to list running VMs and 'machine stop' to stop them.`,
 		vmUser := imageUser
 		if u, _ := cmd.Flags().GetString("user"); u != "" {
 			vmUser = u
+		}
+
+		// Validate provisioner binary before proceeding
+		if err := validateProvisioner(provisionerName); err != nil {
+			fmt.Fprintf(cmd.OutOrStderr(), "Error: %v\n", err)
+			os.Exit(1)
 		}
 
 		if vmName == "" {
@@ -83,7 +89,6 @@ Use 'ducttape ps' to list running VMs and 'machine stop' to stop them.`,
 		// If we're the re-exec'd child, run the VM (blocking).
 		if os.Getenv(envReExec) != "" {
 			ensureDirs()
-			// In re-exec child, flags are available via cmd
 			rootPass, _ := cmd.Flags().GetString("root-pass")
 			cleanup := setupEnv(cmd)
 			defer cleanup()

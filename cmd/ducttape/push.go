@@ -214,7 +214,7 @@ func registryAuth(registry, repo string) (string, error) {
 		return "", fmt.Errorf("parse token: %w", err)
 	}
 	if t.Token == "" {
-		return "", fmt.Errorf("empty token — check credentials for %s", registry)
+		return "", fmt.Errorf("empty token -- check credentials for %s", registry)
 	}
 	return "Bearer " + t.Token, nil
 }

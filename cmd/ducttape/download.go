@@ -18,9 +18,9 @@ const imageDefaultTag = "latest"
 // downloadBaseImage downloads a base image from a URL or OCI registry to the local cache.
 // Supported URL schemes:
 //
-//	file:///path/to/image.qcow2  — copy from local path
-//	https://...                  — HTTP download
-//	registry:ref                 — pull OCI image, extract .qcow2 layer
+//	file:///path/to/image.qcow2  -- copy from local path
+//	https://...                  -- HTTP download
+//	registry:ref                 -- pull OCI image, extract .qcow2 layer
 //
 // Returns the local path to the cached image.
 func downloadBaseImage(spec string, cacheName string) (string, error) {
@@ -80,7 +80,7 @@ func downloadBaseImage(spec string, cacheName string) (string, error) {
 		return pullFromRegistry(ref, dest)
 	}
 
-	// Bare registry reference (e.g. ghcr.io/org/repo:tag) — treat as OCI pull
+	// Bare registry reference (e.g. ghcr.io/org/repo:tag) -- treat as OCI pull
 	return pullFromRegistry(spec, dest)
 }
 

@@ -1,7 +1,7 @@
 package main
 
 // knownAliases maps short names to download URLs for well-known base disk images.
-// These are direct QCOW2 download links — no OCI wrapping.
+// These are direct QCOW2 download links -- no OCI wrapping.
 var knownAliases = map[string]string{
 	"alpine-cloud":     "ghcr.io/ducttape-infra/cloud-images/alpine-cloud",
 	"fedora-cloud":     "ghcr.io/ducttape-infra/cloud-images/fedora-cloud",

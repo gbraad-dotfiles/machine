@@ -47,7 +47,7 @@ func findBinary(name string, envVar string) (string, error) {
 
 // setupEnv prepares the runtime environment so that the macadam library
 // can find helper binaries (gvproxy).  Macadam is used as a Go library
-// only — no macadam binary lookup.
+// only -- no macadam binary lookup.
 func setupEnv(cmd *cobra.Command) func() {
 	addToPath := func(dir string) {
 		path := os.Getenv("PATH")

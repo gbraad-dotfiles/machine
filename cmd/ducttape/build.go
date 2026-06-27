@@ -30,10 +30,10 @@ var buildCommand = &cobra.Command{
 		baseSpec, _ := cmd.Flags().GetString("base")
 		provisionerName, _ := cmd.Flags().GetString("provisioner")
 		rootPass := cmd.Flags().Lookup("root-pass").Value.String()
-	cloudInitPath, _ := cmd.Flags().GetString("cloudinit")
-	debugMode, _ = cmd.Flags().GetBool("debug")
+		cloudInitPath, _ := cmd.Flags().GetString("cloudinit")
+		debugMode, _ = cmd.Flags().GetBool("debug")
 		userPass := cmd.Flags().Lookup("user-pass").Value.String()
-	vmUser := imageUser
+		vmUser := imageUser
 		if u, _ := cmd.Flags().GetString("user"); u != "" {
 			vmUser = u
 		}
@@ -43,28 +43,48 @@ var buildCommand = &cobra.Command{
 			os.Exit(1)
 		}
 		if mfPath != "" {
-		if _, err := os.Stat(mfPath); err != nil {
-			fmt.Fprintf(cmd.OutOrStderr(), "Error: Machinefile %q not found\n", mfPath)
-			os.Exit(1)
+			if fi, err := os.Stat(mfPath); err != nil {
+				fmt.Fprintf(cmd.OutOrStderr(), "Error: %q not found\n", mfPath)
+				os.Exit(1)
+			} else if fi.IsDir() {
+				// Directory given -- look for a Machinefile inside.
+				for _, name := range []string{"Machinefile", "Dockerfile", "Containerfile"} {
+					candidate := filepath.Join(mfPath, name)
+					if fi2, err := os.Stat(candidate); err == nil && !fi2.IsDir() {
+						mfPath = candidate
+						break
+					}
+				}
+				if fi, err := os.Stat(mfPath); err != nil || fi.IsDir() {
+					fmt.Fprintf(cmd.OutOrStderr(), "Error: no Machinefile, Dockerfile, or Containerfile found in %q\n", mfPath)
+					os.Exit(1)
+				}
+			}
 		}
-	}
-	// If no --base given, try reading FROM from the Machinefile
-	if baseSpec == "" && mfPath != "" {
+		// If no --base given, try reading FROM from the Machinefile
+		if baseSpec == "" && mfPath != "" {
 			baseSpec = readFromLine(mfPath)
 		}
 		if baseSpec == "" {
 			fmt.Fprintln(cmd.OutOrStderr(), "Error: --base is required when no FROM is in the Machinefile")
 			os.Exit(1)
 		}
+
+		// Validate provisioner binary BEFORE downloading anything
+		if err := validateProvisioner(provisionerName); err != nil {
+			fmt.Fprintf(cmd.OutOrStderr(), "Error: %v\n", err)
+			os.Exit(1)
+		}
+
 		// Check if another VM is already running
-	if out, _ := exec.Command("pgrep", "-c", "-f", "qemu-system-x86").Output(); len(out) > 0 && out[0] > 48 {
-		fmt.Fprintf(cmd.OutOrStderr(), "Warning: Another VM appears to be running (qemu process exists).\n")
-		fmt.Fprintf(cmd.OutOrStderr(), "  Use 'ducttape ps' and 'ducttape stop <name>' to clean up.\n")
-	}
+		if out, _ := exec.Command("pgrep", "-c", "-f", "qemu-system-x86").Output(); len(out) > 0 && out[0] > 48 {
+			fmt.Fprintf(cmd.OutOrStderr(), "Warning: Another VM appears to be running (qemu process exists).\n")
+			fmt.Fprintf(cmd.OutOrStderr(), "  Use 'ducttape ps' and 'ducttape stop <name>' to clean up.\n")
+		}
 
-	ensureDirs()
+		ensureDirs()
 
-	cleanup := setupEnv(cmd)
+		cleanup := setupEnv(cmd)
 		defer cleanup()
 
 		basePath, err := resolveBaseImage(baseSpec)
@@ -103,8 +123,7 @@ var buildCommand = &cobra.Command{
 			p.StartVM(tmpName)
 		}()
 
-		// Wait for the VM config to appear, then proceed with SSH.
-		info, err := waitForSSHInfo(tmpName, p, 30*time.Second)
+		info, err := waitForSSHInfo(tmpName, p, 60*time.Second)
 		if err != nil {
 			fmt.Fprintf(cmd.OutOrStderr(), "failed to get VM SSH info: %v\n", err)
 			os.Exit(1)
@@ -145,10 +164,10 @@ var buildCommand = &cobra.Command{
 		// --- Phase 2: main Machinefile as root -------------------------
 		fmt.Printf("Executing %s as root...\n", mfPath)
 		rootRunner := &mf.SSHRunner{
-			BaseDir:    ".",
-			SshHost:    "localhost",
-			SshUser:    "root",
-			SshPort:    strconv.Itoa(info.SSHPort),
+			BaseDir:     ".",
+			SshHost:     "localhost",
+			SshUser:     "root",
+			SshPort:     strconv.Itoa(info.SSHPort),
 			SshPassword: rootPass,
 		}
 		if err := mf.ParseAndRunDockerfile(mfPath, rootRunner, nil); err != nil {
@@ -185,26 +204,49 @@ var buildCommand = &cobra.Command{
 			os.Exit(1)
 		}
 
-		cfgPath := filepath.Join(configDir, tmpName+".json")
-		data, err := os.ReadFile(cfgPath)
-		if err != nil {
-			fmt.Fprintf(cmd.OutOrStderr(), "failed to read config after stop: %v\n", err)
-			os.Exit(1)
+		var sourceDisk string
+		switch provisionerName {
+		case "macadam":
+			cfgPath := filepath.Join(configDir, tmpName+".json")
+			data, err := os.ReadFile(cfgPath)
+			if err != nil {
+				fmt.Fprintf(cmd.OutOrStderr(), "failed to read config after stop: %v\n", err)
+				os.Exit(1)
+			}
+			var cfg struct {
+				ImagePath struct {
+					Path string `json:"Path"`
+				} `json:"ImagePath"`
+			}
+			if err := json.Unmarshal(data, &cfg); err != nil {
+				fmt.Fprintf(cmd.OutOrStderr(), "failed to parse config: %v\n", err)
+				os.Exit(1)
+			}
+			sourceDisk = cfg.ImagePath.Path
+			if sourceDisk == "" {
+				fmt.Fprintf(cmd.OutOrStderr(), "could not determine disk path from config\n")
+				os.Exit(1)
+			}
+		default:
+			// Lima: disk at ~/.lima/<name>/disk
+			limaDir := filepath.Join(os.Getenv("HOME"), ".lima", tmpName)
+			diskFile := filepath.Join(limaDir, "disk")
+			if _, err := os.Stat(diskFile); err != nil {
+				fmt.Fprintf(cmd.OutOrStderr(), "Lima disk not found at %s: %v\n", diskFile, err)
+				os.Exit(1)
+			}
+			// Flatten overlay+backing into standalone QCOW2
+			fmt.Println("  Flattening disk overlay...")
+			flattened := filepath.Join(os.TempDir(), "ducttape-"+tmpName+"-flat.qcow2")
+			flatten := exec.Command("qemu-img", "convert", "-O", "qcow2", diskFile, flattened)
+			if out, err := flatten.CombinedOutput(); err != nil {
+				fmt.Fprintf(cmd.OutOrStderr(), "failed to flatten disk: %v\n%s", err, string(out))
+				os.Exit(1)
+			}
+			defer os.Remove(flattened)
+			sourceDisk = flattened
 		}
-		var cfg struct {
-			ImagePath struct {
-				Path string `json:"Path"`
-			} `json:"ImagePath"`
-		}
-		if err := json.Unmarshal(data, &cfg); err != nil {
-			fmt.Fprintf(cmd.OutOrStderr(), "failed to parse config: %v\n", err)
-			os.Exit(1)
-		}
-		sourceDisk := cfg.ImagePath.Path
-		if sourceDisk == "" {
-			fmt.Fprintf(cmd.OutOrStderr(), "could not determine disk path from config\n")
-			os.Exit(1)
-		}
+
 		destDisk := filepath.Join(imagesDir, tag+".qcow2")
 		if err := copyFile(sourceDisk, destDisk); err != nil {
 			fmt.Fprintf(cmd.OutOrStderr(), "failed to copy disk: %v\n", err)

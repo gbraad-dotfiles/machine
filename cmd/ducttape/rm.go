@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// rmCommand removes a VM using the macadam library
+// rmCommand removes a VM using the default provisioner.
 var rmCommand = &cobra.Command{
 	Use:   "rm <vm>",
 	Short: "Remove a VM",
@@ -18,7 +18,7 @@ var rmCommand = &cobra.Command{
 			os.Exit(1)
 		}
 		vm := "ducttape-" + strings.TrimPrefix(args[0], "ducttape-")
-		p := &MacadamProvisioner{}
+		p := provisionerForName(defaultProv)
 		if err := p.RemoveVM(vm); err != nil {
 			fmt.Fprintf(cmd.OutOrStderr(), "error removing VM %s: %v\n", vm, err)
 			os.Exit(1)

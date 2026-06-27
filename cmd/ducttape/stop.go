@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// stopCommand stops a VM using the macadam library
+// stopCommand stops a VM using the default provisioner.
 var stopCommand = &cobra.Command{
 	Use:   "stop <vm>",
 	Short: "Stop a running VM",
@@ -18,7 +18,7 @@ var stopCommand = &cobra.Command{
 			os.Exit(1)
 		}
 		vm := "ducttape-" + strings.TrimPrefix(args[0], "ducttape-")
-		p := &MacadamProvisioner{}
+		p := provisionerForName(defaultProv)
 		if err := p.StopVM(vm); err != nil {
 			fmt.Fprintf(cmd.OutOrStderr(), "error stopping VM %s: %v\n", vm, err)
 			os.Exit(1)
