@@ -55,5 +55,16 @@ func parseLimaInstanceList(data []byte) []limaInstance {
 	if err := json.Unmarshal(data, &single); err == nil && single.Name != "" {
 		return []limaInstance{single}
 	}
-	return nil
+	var result []limaInstance
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var inst limaInstance
+		if err := json.Unmarshal([]byte(line), &inst); err == nil && inst.Name != "" {
+			result = append(result, inst)
+		}
+	}
+	return result
 }

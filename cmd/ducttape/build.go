@@ -96,12 +96,6 @@ var buildCommand = &cobra.Command{
 			return fmt.Errorf("%s init failed: %w", provisionerName, err)
 		}
 
-		if provisionerName == "lima" && len(mountSpecs) > 0 {
-			if err := addLimaMounts(tmpName, mountSpecs); err != nil {
-				return fmt.Errorf("mount setup failed: %w", err)
-			}
-		}
-
 		go func() {
 			p.StartVM(tmpName)
 		}()

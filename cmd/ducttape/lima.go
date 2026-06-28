@@ -44,7 +44,7 @@ arch: "%s"
 cpus: %s
 memory: "%sMiB"
 disk: "%sGiB"
-mounts: []
+mounts: %s
 upgradePackages: false
 containerd:
   system: false
@@ -53,7 +53,8 @@ ssh:
   localPort: 0
   loadDotSSHPubKeys: true
   forwardAgent: false
-%s`, diskImage, archForQEMU(), cpus, memory, diskSize, provision)
+%s
+%s`, diskImage, archForQEMU(), cpus, memory, diskSize, mountsYAML(), publishYAML(), provision)
 
 	yamlPath := filepath.Join(os.TempDir(), "ducttape-lima-"+name+".yaml")
 	if err := os.WriteFile(yamlPath, []byte(yaml), 0o644); err != nil {
@@ -172,6 +173,46 @@ func parsePortFromHostAgentLog(name string) int {
 		}
 	}
 	return 0
+}
+
+
+func mountsYAML() string {
+	if len(mountSpecs) == 0 {
+		return "[]"
+	}
+	var lines []string
+	lines = append(lines, "")
+	for _, e := range mountSpecs {
+		parts := strings.SplitN(e, ":", 2)
+		hostPath := parts[0]
+		guestPath := hostPath
+		if len(parts) == 2 {
+			guestPath = parts[1]
+		}
+		lines = append(lines, fmt.Sprintf("  - location: %s\n    mountPoint: %s\n    writable: true", hostPath, guestPath))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func publishYAML() string {
+	if len(publish) == 0 {
+		return ""
+	}
+	var lines []string
+	lines = append(lines, "\nportForwards:")
+	for _, e := range publish {
+		proto := "tcp"
+		portSpec := e
+		if slash := strings.Index(e, "/"); slash >= 0 {
+			proto = e[slash+1:]
+			portSpec = e[:slash]
+		}
+		parts := strings.SplitN(portSpec, ":", 2)
+		if len(parts) == 2 {
+			lines = append(lines, fmt.Sprintf("  - guestPort: %s\n    hostPort: %s\n    proto: %s", parts[1], parts[0], proto))
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func archForQEMU() string {

@@ -22,6 +22,7 @@ var (
 )
 
 var mountSpecs []string
+var publish []string
 
 var version = "dev"
 
