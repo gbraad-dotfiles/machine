@@ -20,11 +20,10 @@ const (
 	defaultUserPass = "password"
 )
 
-// buildCommand represents the build subcommand
 var buildCommand = &cobra.Command{
 	Use:   "build",
 	Short: "Build a new image from a base image and a Machinefile",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		tag, _ := cmd.Flags().GetString("tag")
 		mfPath, _ := cmd.Flags().GetString("file")
 		baseSpec, _ := cmd.Flags().GetString("base")
@@ -39,15 +38,12 @@ var buildCommand = &cobra.Command{
 		}
 
 		if tag == "" {
-			fmt.Fprintln(cmd.OutOrStderr(), "Error: --tag is required")
-			os.Exit(1)
+			return fmt.Errorf("--tag is required")
 		}
 		if mfPath != "" {
 			if fi, err := os.Stat(mfPath); err != nil {
-				fmt.Fprintf(cmd.OutOrStderr(), "Error: %q not found\n", mfPath)
-				os.Exit(1)
+				return fmt.Errorf("file %q not found", mfPath)
 			} else if fi.IsDir() {
-				// Directory given -- look for a Machinefile inside.
 				for _, name := range []string{"Machinefile", "Dockerfile", "Containerfile"} {
 					candidate := filepath.Join(mfPath, name)
 					if fi2, err := os.Stat(candidate); err == nil && !fi2.IsDir() {
@@ -56,41 +52,27 @@ var buildCommand = &cobra.Command{
 					}
 				}
 				if fi, err := os.Stat(mfPath); err != nil || fi.IsDir() {
-					fmt.Fprintf(cmd.OutOrStderr(), "Error: no Machinefile, Dockerfile, or Containerfile found in %q\n", mfPath)
-					os.Exit(1)
+					return fmt.Errorf("no Machinefile, Dockerfile, or Containerfile found in %q", mfPath)
 				}
 			}
 		}
-		// If no --base given, try reading FROM from the Machinefile
 		if baseSpec == "" && mfPath != "" {
 			baseSpec = readFromLine(mfPath)
 		}
 		if baseSpec == "" {
-			fmt.Fprintln(cmd.OutOrStderr(), "Error: --base is required when no FROM is in the Machinefile")
-			os.Exit(1)
+			return fmt.Errorf("--base is required when no FROM is in the Machinefile")
 		}
-
-		// Validate provisioner binary BEFORE downloading anything
 		if err := validateProvisioner(provisionerName); err != nil {
-			fmt.Fprintf(cmd.OutOrStderr(), "Error: %v\n", err)
-			os.Exit(1)
-		}
-
-		// Check if another VM is already running
-		if out, _ := exec.Command("pgrep", "-c", "-f", "qemu-system-x86").Output(); len(out) > 0 && out[0] > 48 {
-			fmt.Fprintf(cmd.OutOrStderr(), "Warning: Another VM appears to be running (qemu process exists).\n")
-			fmt.Fprintf(cmd.OutOrStderr(), "  Use 'ducttape ps' and 'ducttape stop <name>' to clean up.\n")
+			return err
 		}
 
 		ensureDirs()
-
 		cleanup := setupEnv(cmd)
 		defer cleanup()
 
 		basePath, err := resolveBaseImage(baseSpec)
 		if err != nil {
-			fmt.Fprintf(cmd.OutOrStderr(), "Error resolving base image: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("resolving base image: %w", err)
 		}
 
 		tmpName := "ducttape-build-" + randomString(6)
@@ -108,42 +90,33 @@ var buildCommand = &cobra.Command{
 		case "lima":
 			p = &LimaProvisioner{}
 		default:
-			fmt.Fprintf(cmd.OutOrStderr(), "unknown provisioner: %s\n", provisionerName)
-			os.Exit(1)
+			return fmt.Errorf("unknown provisioner: %s", provisionerName)
 		}
 
 		if err := p.CreateVM(tmpName, basePath, "2", "2048", "10", vmUser, rootPass, cloudInitPath); err != nil {
-			fmt.Fprintf(cmd.OutOrStderr(), "%s init failed: %v\n", provisionerName, err)
-			os.Exit(1)
+			return fmt.Errorf("%s init failed: %w", provisionerName, err)
 		}
 
-		// Insert mounts into Lima YAML before starting
 		if provisionerName == "lima" && len(mountSpecs) > 0 {
 			if err := addLimaMounts(tmpName, mountSpecs); err != nil {
-				fmt.Fprintf(cmd.OutOrStderr(), "mount setup failed: %v\n", err)
-				os.Exit(1)
+				return fmt.Errorf("mount setup failed: %w", err)
 			}
 		}
 
-		// StartVM launches QEMU and blocks until it exits, so run it in
-		// the background.
 		go func() {
 			p.StartVM(tmpName)
 		}()
 
-		info, err := waitForSSHInfo(tmpName, p, 60*time.Second)
+		info, err := waitForSSHInfo(tmpName, p, 180*time.Second)
 		if err != nil {
-			fmt.Fprintf(cmd.OutOrStderr(), "failed to get VM SSH info: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to get VM SSH info: %w", err)
 		}
 		fmt.Printf("Waiting for VM (port %d, user %s)...\n", info.SSHPort, info.SSHUser)
 		if err := waitForSSH(info, 5*time.Minute); err != nil {
-			fmt.Fprintf(cmd.OutOrStderr(), "timeout waiting for SSH: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("timeout waiting for SSH: %w", err)
 		}
 		fmt.Println("VM ready.")
 
-		// --- Phase 1: pre-Machinefile ---------------------------------
 		prePath := mfPath + "-pre"
 		if _, err := os.Stat(prePath); err != nil {
 			prePath = filepath.Join(filepath.Dir(mfPath), "Machinefile-pre")
@@ -162,14 +135,13 @@ var buildCommand = &cobra.Command{
 				"USER":        info.SSHUser,
 			}
 			if err := mf.ParseAndRunDockerfile(prePath, preRunner, preArgs); err != nil {
-				fmt.Fprintf(cmd.OutOrStderr(), "pre-Machinefile failed: %v\n", err)
-				os.Exit(1)
+				return fmt.Errorf("pre-Machinefile failed: %w", err)
 			}
 			time.Sleep(2 * time.Second)
 		} else {
 			fmt.Println("  (no pre-Machinefile found)")
 		}
-		// --- Phase 2: main Machinefile as root -------------------------
+
 		fmt.Printf("Executing %s as root...\n", mfPath)
 		rootRunner := &mf.SSHRunner{
 			BaseDir:     ".",
@@ -179,11 +151,9 @@ var buildCommand = &cobra.Command{
 			SshPassword: rootPass,
 		}
 		if err := mf.ParseAndRunDockerfile(mfPath, rootRunner, nil); err != nil {
-			fmt.Fprintf(cmd.OutOrStderr(), "machinefile execution failed: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("machinefile execution failed: %w", err)
 		}
 
-		// --- Phase 3: post-Machinefile --------------------------------
 		postPath := mfPath + "-post"
 		if _, err := os.Stat(postPath); err != nil {
 			postPath = filepath.Join(filepath.Dir(mfPath), "Machinefile-post")
@@ -199,17 +169,15 @@ var buildCommand = &cobra.Command{
 			}
 			postArgs := map[string]string{"USER_PASSWD": userPass}
 			if err := mf.ParseAndRunDockerfile(postPath, postRunner, postArgs); err != nil {
-				fmt.Fprintf(cmd.OutOrStderr(), "post-Machinefile failed: %v\n", err)
-				os.Exit(1)
+				return fmt.Errorf("post-Machinefile failed: %w", err)
 			}
 		} else {
 			fmt.Println("  (no post-Machinefile found)")
 		}
-		// --- Stop VM and copy disk ------------------------------------
+
 		fmt.Println("Stopping VM...")
 		if err := p.StopVM(tmpName); err != nil {
-			fmt.Fprintf(cmd.OutOrStderr(), "%s stop failed: %v\n", provisionerName, err)
-			os.Exit(1)
+			return fmt.Errorf("%s stop failed: %w", provisionerName, err)
 		}
 
 		var sourceDisk string
@@ -218,8 +186,7 @@ var buildCommand = &cobra.Command{
 			cfgPath := filepath.Join(configDir, tmpName+".json")
 			data, err := os.ReadFile(cfgPath)
 			if err != nil {
-				fmt.Fprintf(cmd.OutOrStderr(), "failed to read config after stop: %v\n", err)
-				os.Exit(1)
+				return fmt.Errorf("failed to read config after stop: %w", err)
 			}
 			var cfg struct {
 				ImagePath struct {
@@ -227,29 +194,23 @@ var buildCommand = &cobra.Command{
 				} `json:"ImagePath"`
 			}
 			if err := json.Unmarshal(data, &cfg); err != nil {
-				fmt.Fprintf(cmd.OutOrStderr(), "failed to parse config: %v\n", err)
-				os.Exit(1)
+				return fmt.Errorf("failed to parse config: %w", err)
 			}
 			sourceDisk = cfg.ImagePath.Path
 			if sourceDisk == "" {
-				fmt.Fprintf(cmd.OutOrStderr(), "could not determine disk path from config\n")
-				os.Exit(1)
+				return fmt.Errorf("could not determine disk path from config")
 			}
 		default:
-			// Lima: disk at ~/.lima/<name>/disk
 			limaDir := filepath.Join(os.Getenv("HOME"), ".lima", tmpName)
 			diskFile := filepath.Join(limaDir, "disk")
 			if _, err := os.Stat(diskFile); err != nil {
-				fmt.Fprintf(cmd.OutOrStderr(), "Lima disk not found at %s: %v\n", diskFile, err)
-				os.Exit(1)
+				return fmt.Errorf("Lima disk not found at %s: %w", diskFile, err)
 			}
-			// Flatten overlay+backing into standalone QCOW2
 			fmt.Println("  Flattening disk overlay...")
 			flattened := filepath.Join(os.TempDir(), "ducttape-"+tmpName+"-flat.qcow2")
 			flatten := exec.Command("qemu-img", "convert", "-O", "qcow2", diskFile, flattened)
 			if out, err := flatten.CombinedOutput(); err != nil {
-				fmt.Fprintf(cmd.OutOrStderr(), "failed to flatten disk: %v\n%s", err, string(out))
-				os.Exit(1)
+				return fmt.Errorf("failed to flatten disk: %v\n%s", err, string(out))
 			}
 			defer os.Remove(flattened)
 			sourceDisk = flattened
@@ -257,16 +218,13 @@ var buildCommand = &cobra.Command{
 
 		destDisk := filepath.Join(imagesDir, tag+".qcow2")
 		if err := copyFile(sourceDisk, destDisk); err != nil {
-			fmt.Fprintf(cmd.OutOrStderr(), "failed to copy disk: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to copy disk: %w", err)
 		}
 		fmt.Printf("Built image %s saved to %s\n", tag, destDisk)
+		return nil
 	},
 }
 
-// waitForSSHInfo polls SSHInfo until the config is available or timeout.
-// readFromLine reads the FROM line from a Machinefile, expanding ARG
-// references with their defaults or from build args (--build-arg KEY=VAL).
 func readFromLine(path string) string {
 	f, err := os.Open(path)
 	if err != nil {
@@ -311,5 +269,5 @@ func waitForSSHInfo(name string, p Provisioner, timeout time.Duration) (*VMInfo,
 		}
 		time.Sleep(2 * time.Second)
 	}
-	return nil, fmt.Errorf("timed out waiting for SSH info for %s", name)
+	return nil, fmt.Errorf("timed out waiting for SSH info (180s) for %s", name)
 }

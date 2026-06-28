@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 // LimaProvisioner implements Provisioner using the limactl binary.
@@ -79,13 +81,18 @@ func (l *LimaProvisioner) RemoveVM(name string) error {
 
 func (l *LimaProvisioner) SSHInfo(name string) (*VMInfo, error) {
 	user := os.Getenv("USER")
-	identity := filepath.Join(os.Getenv("HOME"), ".lima", name, "ssh")
+	identity := filepath.Join(os.Getenv("HOME"), ".lima", "_config", "user")
 	port := 0
 
 	// limactl list --json can output a single object or an array.
 	out, err := exec.Command("limactl", "list", "--json").Output()
 	if err == nil {
 		port, identity = parseLimaListJSON(out, name, identity)
+	}
+
+	// Fallback: read SSH port from host agent log (available earlier)
+	if port == 0 {
+		port = parsePortFromHostAgentLog(name)
 	}
 
 	if port == 0 {
@@ -132,6 +139,37 @@ func parseLimaListJSON(data []byte, name string, defaultIdentity string) (int, s
 	}
 
 	return 0, defaultIdentity
+}
+
+// parsePortFromHostAgentLog reads the SSH port from Lima's ha.stdout.log.
+// This port is logged immediately when QEMU starts, before limactl list shows it.
+func parsePortFromHostAgentLog(name string) int {
+	logPath := filepath.Join(os.Getenv("HOME"), ".lima", name, "ha.stdout.log")
+	f, err := os.Open(logPath)
+	if err != nil {
+		return 0
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.Contains(line, "sshLocalPort") {
+			continue
+		}
+		var entry struct {
+			Status struct {
+				SSHLocalPort int `json:"sshLocalPort"`
+			} `json:"status"`
+		}
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			continue
+		}
+		if entry.Status.SSHLocalPort > 0 {
+			return entry.Status.SSHLocalPort
+		}
+	}
+	return 0
 }
 
 func archForQEMU() string {

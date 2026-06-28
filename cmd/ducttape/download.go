@@ -153,7 +153,7 @@ func pullFromRegistry(ref string, dest string) (string, error) {
 		dlURL := fmt.Sprintf("docker://%s/%s:%s", registry, repo, tag)
 		fmt.Printf("  Downloading %s ...\n", dlURL)
 		dirDest := fmt.Sprintf("dir:%s", tmpDir)
-		cmd := exec.Command(skopeoPath, "copy", dlURL, dirDest)
+		cmd := exec.Command(skopeoPath, "copy", "--src-no-creds", dlURL, dirDest)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
