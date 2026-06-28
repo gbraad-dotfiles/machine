@@ -216,3 +216,12 @@ func readQEMUPid(vmName string) int {
 	pid, _ := strconv.Atoi(strings.TrimSpace(string(data)))
 	return pid
 }
+
+func waitTimeout() time.Duration {
+	if v := os.Getenv("DUCTTAPE_WAIT"); v != "" {
+		if t, err := strconv.Atoi(v); err == nil && t > 0 {
+			return time.Duration(t) * time.Second
+		}
+	}
+	return 180 * time.Second
+}

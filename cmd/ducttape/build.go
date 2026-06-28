@@ -24,6 +24,7 @@ var debugMode bool
 
 var buildCommand = &cobra.Command{
 	Use:   "build",
+	SilenceUsage: true,
 	Short: "Build a new image from a base image and a Machinefile",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		tag, _ := cmd.Flags().GetString("tag")
@@ -105,12 +106,12 @@ var buildCommand = &cobra.Command{
 			p.StartVM(tmpName)
 		}()
 
-		info, err := waitForSSHInfo(tmpName, p, 180*time.Second)
+		info, err := waitForSSHInfo(tmpName, p, waitTimeout())
 		if err != nil {
 			return fmt.Errorf("failed to get VM SSH info: %w", err)
 		}
 		fmt.Printf("Waiting for VM (port %d, user %s)...\n", info.SSHPort, info.SSHUser)
-		if err := waitForSSH(info, 5*time.Minute); err != nil {
+		if err := waitForSSH(info, waitTimeout()); err != nil {
 			return fmt.Errorf("timeout waiting for SSH: %w", err)
 		}
 		fmt.Println("VM ready.")

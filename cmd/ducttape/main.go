@@ -60,6 +60,7 @@ func init() {
 func main() {
 	rootCmd := &cobra.Command{
 		Use:     "ducttape",
+		SilenceUsage: true,
 		Short:   "Machine CLI for managing cloud-init based VM images",
 		Long:    `Ducttape provides a Docker-like workflow for building and running VM images using Machinefiles.`,
 		Version: version,

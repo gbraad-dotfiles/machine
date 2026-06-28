@@ -27,10 +27,15 @@ var shellCommand = &cobra.Command{
 		}
 		vmName := "ducttape-" + strings.TrimPrefix(args[0], "ducttape-")
 
-		// Let LimaProvisioner.SSHInfo handle detection (limactl path, etc.)
+		maxWait := 60
+		if v := os.Getenv("DUCTTAPE_WAIT"); v != "" {
+			if t, err := strconv.Atoi(v); err == nil && t > 0 {
+				maxWait = t
+			}
+		}
 		var info *di.VMInfo
 		var err error
-		for i := 0; i < 12; i++ {
+		for i := 0; i < maxWait/5; i++ {
 			info, err = (&LimaProvisioner{}).SSHInfo(vmName)
 			if err == nil && info != nil && info.SSHPort > 0 {
 				break

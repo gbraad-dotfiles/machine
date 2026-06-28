@@ -45,6 +45,7 @@ cpus: %s
 memory: "%sMiB"
 disk: "%sGiB"
 mounts: []
+upgradePackages: false
 containerd:
   system: false
   user: false

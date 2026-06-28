@@ -38,6 +38,7 @@ func init() {
 
 var runCommand = &cobra.Command{
 	Use:   "run <image>",
+	SilenceUsage: true,
 	Short: "Run a VM from a built image",
 	Long: `Start a VM in the background from a previously built image.
 
