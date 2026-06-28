@@ -2,9 +2,7 @@ module ducttape
 
 go 1.25.0
 
-replace github.com/crc-org/macadam => /home/gbraad/Projects/machinefile/macadam
 
-replace github.com/machinefile/machinefile => /home/gbraad/Projects/machinefile/machinefile
 
 require (
 	github.com/containers/podman/v5 v5.3.1
@@ -153,4 +151,7 @@ require (
 	tags.cncf.io/container-device-interface v1.0.1 // indirect
 )
 
+
+replace github.com/crc-org/macadam => /home/runner/Projects/macadam
+replace github.com/machinefile/machinefile => /home/runner/Projects/machinefile/machinefile
 replace github.com/containers/podman/v5 => github.com/crc-org/podman-macadam/v5 v5.0.0-20260331171210-b5ac9170d1ad
