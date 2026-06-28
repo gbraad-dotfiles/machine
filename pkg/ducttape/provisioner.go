@@ -5,7 +5,7 @@ import (
 	"os/exec"
 )
 
-// Provisioner abstracts the VM provisioner (macadam, lima, etc.)
+// Provisioner abstracts the VM provisioner (lima)
 type Provisioner interface {
 	CreateVM(name string, diskImage string, cpus string, memory string, diskSize string, username string, rootPass string, cloudInitPath string) error
 	StartVM(name string) error

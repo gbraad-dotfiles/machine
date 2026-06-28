@@ -96,9 +96,7 @@ Use 'ducttape ps' to list running VMs and 'ducttape stop' to stop them.`,
 			defer cleanup()
 			var p di.Provisioner
 			switch provisionerName {
-			case "macadam":
-				p = &MacadamProvisioner{}
-			case "lima":
+				case "lima":
 				p = &LimaProvisioner{}
 			default:
 				os.Exit(1)

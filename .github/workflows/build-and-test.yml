@@ -21,18 +21,6 @@ jobs:
           repository: ducttape-infra/ducttape
           path: .
 
-      - name: Checkout machinefile module
-        uses: actions/checkout@v4
-        with:
-          repository: ducttape-infra/machinefile
-          path: machinefile
-
-      - name: Checkout macadam fork
-        uses: actions/checkout@v4
-        with:
-          repository: ducttape-infra/macadam
-          path: macadam
-
       - name: Checkout examples repo
         uses: actions/checkout@v4
         with:
@@ -60,13 +48,6 @@ jobs:
       - uses: lima-vm/lima-actions/setup@v1
         id: lima-actions-setup
 
-      - name: Update go.mod replace directives for CI paths
-        run: |
-          go mod edit -replace=github.com/machinefile/machinefile=./machinefile
-          go mod edit -replace=github.com/crc-org/macadam=./macadam
-          echo "=== Updated go.mod ==="
-          cat go.mod
-
       - name: Initialize and tidy go module
         run: |
           go mod tidy
@@ -75,17 +56,17 @@ jobs:
       - name: Build ducttape binary
         run: |
           go version
-          go build -ldflags="-X main.version=$(cat VERSION)" -o ducttape ./cmd/ducttape
-          ls -l ducttape
+          make
+          ls -l out/
 
       - name: Verify binary builds & shows help
         run: |
           echo "=== ducttape --help ==="
-          ./ducttape --help
+          ./out/ducttape --help
           echo "=== ducttape build --help ==="
-          ./ducttape build --help
+          ./out/ducttape build --help
           echo "=== ducttape run --help ==="
-          ./ducttape run --help
+          ./out/ducttape run --help
 
       - name: Build image with ducttape
         id: build-image
@@ -97,11 +78,11 @@ jobs:
           echo "  Machinefile: examples/fedora-httpd/Machinefile.httpd"
           echo "  Base image (-d): fedora-cloud (alias -> HTTPS download -> qcow2)"
 
-          ./ducttape build -t "$IMAGE_TAG" -f examples/fedora-httpd/Machinefile.httpd -d fedora-cloud:42 --root-pass password
+          ./out/ducttape build -t "$IMAGE_TAG" -f examples/fedora-httpd/Machinefile.httpd -d fedora-cloud:42 --root-pass password
 
           # Verify the image was created
           echo "=== Listing images after build ==="
-          ./ducttape images
+          ./out/ducttape images
           ls -la ~/.local/share/ducttape/images/
           echo "Built image $IMAGE_TAG"
 
@@ -111,24 +92,24 @@ jobs:
           VM_NAME: fedora-httpd
         run: |
           echo "Running VM from $IMAGE_TAG..."
-          ./ducttape run "$IMAGE_TAG" --name "$VM_NAME"
+          ./out/ducttape run "$IMAGE_TAG" --name "$VM_NAME"
 
           echo "Waiting for SSH..."
           for i in $(seq 1 30); do
-            ./ducttape shell "$VM_NAME" true 2>/dev/null && break
+            ./out/ducttape shell "$VM_NAME" true 2>/dev/null && break
             sleep 10
           done
           echo "VM ready."
 
           echo "=== Verify httpd ==="
-          ./ducttape shell "$VM_NAME" sudo systemctl status httpd --no-pager 2>&1 | head -10
+          ./out/ducttape shell "$VM_NAME" sudo systemctl status httpd --no-pager 2>&1 | head -10
 
           echo "=== Verify page ==="
-          ./ducttape shell "$VM_NAME" curl -s http://localhost/ 2>&1 | head -5
+          ./out/ducttape shell "$VM_NAME" curl -s http://localhost/ 2>&1 | head -5
 
           echo "=== Stop and clean VM ==="
-          ./ducttape stop "$VM_NAME"
-          ./ducttape rm "$VM_NAME" || true
+          ./out/ducttape stop "$VM_NAME"
+          ./out/ducttape rm "$VM_NAME" || true
 
       - name: Push image to registry
         env:
@@ -137,32 +118,32 @@ jobs:
           REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Pushing image..."
-          ./ducttape push fedora-httpd
+          ./out/ducttape push fedora-httpd
 
       - name: Build derived image (FROM fedora-httpd)
         env:
           ROOT_PASS: password
         run: |
           echo "=== Derived build ==="
-          ./ducttape build -t derived-httpd -f examples/fedora-httpd/Machinefile.derived --root-pass "$ROOT_PASS"
+          ./out/ducttape build -t derived-httpd -f examples/fedora-httpd/Machinefile.derived --root-pass "$ROOT_PASS"
 
           echo "=== Run derived ==="
-          ./ducttape run derived-httpd --name test-derived
+          ./out/ducttape run derived-httpd --name test-derived
 
           echo "=== Verify page ==="
           for i in $(seq 1 30); do
-            ./ducttape shell test-derived true 2>/dev/null && break
+            ./out/ducttape shell test-derived true 2>/dev/null && break
             sleep 5
           done
-          ./ducttape shell test-derived curl -s http://localhost/ 2>&1 | head -5
+          ./out/ducttape shell test-derived curl -s http://localhost/ 2>&1 | head -5
 
           echo "=== Clean derived ==="
-          ./ducttape stop test-derived
-          ./ducttape rm test-derived || true
+          ./out/ducttape stop test-derived
+          ./out/ducttape rm test-derived || true
 
       - name: Upload ducttape binary
 
         uses: actions/upload-artifact@v4
         with:
-          name: ducttape-binary
-          path: ducttape
+          name: ducttape-linux-amd64
+          path: out/ducttape

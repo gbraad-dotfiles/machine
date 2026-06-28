@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -11,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	mf "github.com/machinefile/machinefile/pkg/machinefile"
+	mf "github.com/ducttape-infra/machinefile/pkg/machinefile"
 	di "ducttape/pkg/ducttape"
 	"github.com/spf13/cobra"
 )
@@ -20,6 +19,8 @@ const (
 	defaultRootPass = "password"
 	defaultUserPass = "password"
 )
+
+var debugMode bool
 
 var buildCommand = &cobra.Command{
 	Use:   "build",
@@ -68,9 +69,7 @@ var buildCommand = &cobra.Command{
 		}
 
 		ensureDirs()
-		cleanup := setupEnv(cmd)
-		defer cleanup()
-
+	
 		basePath, err := resolveBaseImage(baseSpec)
 		if err != nil {
 			return fmt.Errorf("resolving base image: %w", err)
@@ -86,9 +85,7 @@ var buildCommand = &cobra.Command{
 		defer vmCleanup()
 
 		switch provisionerName {
-		case "macadam":
-			p = &MacadamProvisioner{}
-		case "lima":
+			case "lima":
 			p = &LimaProvisioner{}
 		default:
 			return fmt.Errorf("unknown provisioner: %s", provisionerName)
@@ -191,24 +188,6 @@ var buildCommand = &cobra.Command{
 
 		var sourceDisk string
 		switch provisionerName {
-		case "macadam":
-			cfgPath := filepath.Join(configDir, tmpName+".json")
-			data, err := os.ReadFile(cfgPath)
-			if err != nil {
-				return fmt.Errorf("failed to read config after stop: %w", err)
-			}
-			var cfg struct {
-				ImagePath struct {
-					Path string `json:"Path"`
-				} `json:"ImagePath"`
-			}
-			if err := json.Unmarshal(data, &cfg); err != nil {
-				return fmt.Errorf("failed to parse config: %w", err)
-			}
-			sourceDisk = cfg.ImagePath.Path
-			if sourceDisk == "" {
-				return fmt.Errorf("could not determine disk path from config")
-			}
 		default:
 			limaDir := filepath.Join(os.Getenv("HOME"), ".lima", tmpName)
 			diskFile := filepath.Join(limaDir, "disk")

@@ -31,8 +31,6 @@ var stopCommand = &cobra.Command{
 // provisionerForName returns a Provisioner for the given name.
 func provisionerForName(name string) di.Provisioner {
 	switch name {
-	case "macadam":
-		return &MacadamProvisioner{}
 	default:
 		return &LimaProvisioner{}
 	}

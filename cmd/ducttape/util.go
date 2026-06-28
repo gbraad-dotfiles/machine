@@ -59,13 +59,6 @@ func setupEnv(cmd *cobra.Command) func() {
 		}
 		os.Setenv("PATH", dir+string(filepath.ListSeparator)+path)
 	}
-	// Extract the embedded gvproxy binary and make it discoverable.
-	if p, err := extractEmbeddedGVProxy(); err == nil {
-		gvproxyPath = p
-		dir := filepath.Dir(p)
-		addToPath(dir)
-		os.Setenv("CONTAINERS_HELPER_BINARY_DIR", dir)
-	}
 	if limaPath, err := findBinary("lima", "LIMA_BIN"); err == nil {
 		addToPath(filepath.Dir(limaPath))
 	}
