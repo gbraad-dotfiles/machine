@@ -340,11 +340,26 @@ func resolveBaseImage(spec string) (string, error) {
 		fmt.Printf("Resolved alias %q\n", spec)
 		return downloadBaseImage(url+tag, baseName)
 	}
-	// 5. Default to registry lookup
+	// 5. Full registry reference (e.g. ghcr.io/org/repo:tag) — pass through
+	if isFullRegistryRef(spec) {
+		return downloadBaseImage("registry:"+spec, spec)
+	}
+	// 6. Default to registry lookup (short name like fedora-cloud)
 	fmt.Printf("Looking up %q from registry...\n", spec)
 	if tag == "" {
 		tag = ":latest"
 	}
 	return downloadBaseImage("registry:ghcr.io/ducttape-infra/cloud-images/"+baseName+tag, baseName)
+}
+
+// isFullRegistryRef reports whether spec looks like a full registry reference
+// (host[:port]/path) as opposed to a short alias name.
+func isFullRegistryRef(spec string) bool {
+	parts := strings.SplitN(spec, "/", 2)
+	if len(parts) < 2 {
+		return false
+	}
+	// The first component of a full ref is a registry host containing a dot or colon.
+	return strings.Contains(parts[0], ".") || strings.Contains(parts[0], ":")
 }
 
