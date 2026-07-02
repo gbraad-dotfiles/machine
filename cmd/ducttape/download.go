@@ -342,7 +342,15 @@ func resolveBaseImage(spec string) (string, error) {
 	}
 	// 5. Full registry reference (e.g. ghcr.io/org/repo:tag) — pass through
 	if isFullRegistryRef(spec) {
-		return downloadBaseImage("registry:"+spec, spec)
+		cacheName := strings.ReplaceAll(spec, "/", "_")
+		// Check cache with sanitized name (skip redundant download)
+		for _, dir := range []string{baseImagesDir, imagesDir} {
+			candidate := filepath.Join(dir, cacheName+".qcow2")
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate, nil
+			}
+		}
+		return downloadBaseImage("registry:"+spec, cacheName)
 	}
 	// 6. Default to registry lookup (short name like fedora-cloud)
 	fmt.Printf("Looking up %q from registry...\n", spec)
