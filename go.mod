@@ -3,7 +3,7 @@ module ducttape
 go 1.25.0
 
 require (
-	github.com/ducttape-infra/machinefile v0.9.7
+	github.com/ducttape-infra/machinefile v0.9.9
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 )
